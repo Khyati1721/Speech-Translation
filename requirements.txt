@@ -1,5 +1,6 @@
 streamlit
-deep-translator
-gtts
-openai-whisper
-torch
+gTTS 
+openai-whisper 
+torch 
+transformers
+sentencepiece

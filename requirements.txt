@@ -1,6 +1,7 @@
 streamlit
-gTTS 
-openai-whisper 
-torch 
+openai-whisper
+torch
+torchvision
 transformers
 sentencepiece
+gTTS

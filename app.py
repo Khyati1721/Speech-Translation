@@ -5,7 +5,6 @@ import whisper
 import tempfile
 import os
 
-
 st.set_page_config(
     page_title="Simply! Translate",
     page_icon="🌍",
@@ -14,7 +13,9 @@ st.set_page_config(
 )
 
 st.markdown(
-    "<h1 style='text-align: center; color: grey;'>Speech to Speech Translation</h1>",
+    "<h1 style='text-align: center; color: grey;'>"
+    "Speech to Speech Translation"
+    "</h1>",
     unsafe_allow_html=True
 )
 
@@ -24,41 +25,85 @@ st.markdown(
 )
 
 st.markdown("""
-    <style>
-    .stButton button {
-        background-color: #4CAF50;
-        color: white;
-        font-size: 16px;
-        padding: 10px;
-        border-radius: 10px;
-    }
-    .stTextArea textarea {
-        font-size: 16px;
-    }
-    .stSelectbox div {
-        font-size: 16px;
-    }
-    </style>
+<style>
+.stButton button {
+    background-color: #4CAF50;
+    color: white;
+    font-size: 16px;
+    padding: 10px;
+    border-radius: 10px;
+}
+
+.stTextArea textarea {
+    font-size: 16px;
+}
+</style>
 """, unsafe_allow_html=True)
 
 
-# --------------------------------------------------
-# TEXT TO SPEECH
-# --------------------------------------------------
+# Languages
+LANGUAGES = {
+    "English": "en",
+    "Hindi": "hi",
+    "Bengali": "bn",
+    "Gujarati": "gu",
+    "Marathi": "mr",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "Kannada": "kn",
+    "Malayalam": "ml",
+    "Punjabi": "pa",
+    "Urdu": "ur",
+    "French": "fr",
+    "German": "de",
+    "Spanish": "es",
+    "Italian": "it",
+    "Portuguese": "pt",
+    "Russian": "ru",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Chinese": "zh-CN"
+}
 
-def text_to_speech(text, accent):
-    output_file = "output.mp3"
 
-    tts = gTTS(text=text, lang=accent)
+# Load Whisper only once
+@st.cache_resource
+def load_whisper():
+    return whisper.load_model("base")
+
+
+model = load_whisper()
+
+
+# Translate text
+@st.cache_data(ttl=3600)
+def translate_text(text, target):
+    translator = gt(
+        source="auto",
+        target=target
+    )
+    return translator.translate(text)
+
+
+# Text to speech
+def text_to_speech(text, language):
+
+    output_file = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".mp3"
+    ).name
+
+    tts = gTTS(
+        text=text,
+        lang=language
+    )
+
     tts.save(output_file)
 
     return output_file
 
 
-# --------------------------------------------------
-# WHISPER TRANSCRIPTION
-# --------------------------------------------------
-
+# Transcribe audio
 def transcribe(audio_file):
 
     extension = audio_file.name.split(".")[-1]
@@ -79,11 +124,12 @@ def transcribe(audio_file):
 
         st.success("✅ Transcription Complete!")
 
-        return result["text"]
+        return result["text"].strip()
 
     except Exception as e:
 
-        st.error(f"❌ Error: {e}")
+        st.error(f"❌ Transcription Error: {e}")
+
         return ""
 
     finally:
@@ -92,236 +138,175 @@ def transcribe(audio_file):
             os.remove(file_path)
 
 
-# --------------------------------------------------
-# LOAD WHISPER MODEL
-# --------------------------------------------------
-
-@st.cache_resource
-def load_whisper_model():
-
-    return whisper.load_model("base")
-
-
-model = load_whisper_model()
-
-
-# --------------------------------------------------
-# GET LANGUAGES
-# --------------------------------------------------
-
-@st.cache_data(ttl=86400)
-def get_languages():
-
-    return gt().get_supported_languages(as_dict=True)
-
-
-try:
-
-    languages = get_languages()
-
-except Exception:
-
-    st.error(
-        "⚠️ Could not load translation languages. "
-        "Google Translate may be temporarily rate-limiting requests."
-    )
-
-    st.stop()
-
-
-language_names = list(languages.keys())
-
-
-# --------------------------------------------------
-# TRANSLATION
-# --------------------------------------------------
-
-@st.cache_data(ttl=3600)
-def translate_text(text, target):
-
-    translator = gt(target=target)
-
-    return translator.translate(text)
-
-
-# --------------------------------------------------
-# UI
-# --------------------------------------------------
-
+# Create columns
 c1, c3, c2 = st.columns(3)
 
+
+# Input format
 inp = c1.selectbox(
     "Choose Input Format",
     ("Text", "MIC", "Audio File")
 )
 
 data = ""
-recorded_file = None
-uploaded_file = None
 
 
-# --------------------------------------------------
-# INPUT
-# --------------------------------------------------
-
+# Text input
 if inp == "Text":
 
-    data = c1.text_area("Enter Text Here")
+    data = c1.text_area(
+        "Enter Text Here"
+    )
 
 
+# Microphone input
 elif inp == "MIC":
 
-    recorded_file = c1.audio_input("Record Audio")
+    recorded_file = c1.audio_input(
+        "Record Audio"
+    )
 
-    if recorded_file and c2.button("Transcribe"):
+    if recorded_file:
 
-        data = transcribe(recorded_file)
+        if c2.button("🎤 Transcribe"):
 
-        c1.text_area(
-            "Transcribed Text",
-            data
-        )
+            data = transcribe(
+                recorded_file
+            )
+
+            st.session_state["source_text"] = data
+
+            c1.text_area(
+                "Transcribed Text",
+                data
+            )
 
 
+# Audio file input
 else:
 
     uploaded_file = c1.file_uploader(
-        "Upload Audio File"
+        "Upload Audio File",
+        type=[
+            "wav",
+            "mp3",
+            "m4a",
+            "ogg",
+            "webm"
+        ]
     )
 
-    if uploaded_file and c2.button("🎤 Transcribe"):
+    if uploaded_file:
 
-        data = transcribe(uploaded_file)
+        if c2.button("🎤 Transcribe"):
 
-        c1.text_area(
-            "Transcribed Text",
-            data
-        )
+            data = transcribe(
+                uploaded_file
+            )
+
+            st.session_state["source_text"] = data
+
+            c1.text_area(
+                "Transcribed Text",
+                data
+            )
 
 
-# --------------------------------------------------
-# OUTPUT LANGUAGE
-# --------------------------------------------------
-
+# Output language
 option = c1.selectbox(
     "Output Language",
-    language_names
+    list(LANGUAGES.keys())
 )
 
+target_language = LANGUAGES[option]
 
-# --------------------------------------------------
-# TRANSLATE BUTTON
-# --------------------------------------------------
 
+# Translate button
 if c2.button("🌐 Translate Text"):
 
-    # MIC
-    if inp == "MIC" and recorded_file:
+    if inp == "Text":
 
-        data = transcribe(recorded_file)
+        source_text = data.strip()
 
-        c1.text_area(
-            "Transcribed Text",
-            data
+    else:
+
+        source_text = st.session_state.get(
+            "source_text",
+            ""
+        ).strip()
+
+    if not source_text:
+
+        st.warning(
+            "⚠️ Please enter text or transcribe audio first."
         )
-
-    # AUDIO FILE
-    elif inp == "Audio File" and uploaded_file:
-
-        data = transcribe(uploaded_file)
-
-        c1.text_area(
-            "Transcribed Text",
-            data
-        )
-
-    # Check empty text
-    if not data.strip():
-
-        st.warning("Please enter or provide some text.")
 
     else:
 
         try:
 
             translated_text = translate_text(
-                data,
-                option
+                source_text,
+                target_language
             )
+
+            st.session_state["translated_text"] = translated_text
+
+            st.session_state["translated_language"] = option
 
             c2.text_area(
                 "Translated Text",
                 translated_text
             )
 
-            # Save translation so we don't translate again
-            st.session_state["translated_text"] = translated_text
+            st.success(
+                "✅ Successfully Translated"
+            )
 
-            st.success("✅ Successfully Translated")
-
-        except Exception as e:
+        except Exception:
 
             st.error(
-                "❌ Translation failed. "
-                "Google Translate may be temporarily rate-limiting requests."
+                "❌ Google Translate is currently rate-limiting this app."
+            )
+
+            st.info(
+                "Please wait a little while and try again."
             )
 
 
-# --------------------------------------------------
-# TEXT TO SPEECH
-# --------------------------------------------------
-
+# Convert translated text to speech
 if c2.button("🔊 Convert To Speech"):
 
-    # Use existing translation if available
     translated_text = st.session_state.get(
         "translated_text",
         ""
     )
 
-    # If translation doesn't exist, translate first
+    saved_language = st.session_state.get(
+        "translated_language",
+        ""
+    )
+
     if not translated_text:
 
-        if inp == "MIC" and recorded_file:
+        st.warning(
+            "⚠️ Please translate the text first."
+        )
 
-            data = transcribe(recorded_file)
+    elif saved_language != option:
 
-        elif inp == "Audio File" and uploaded_file:
+        st.warning(
+            "⚠️ You changed the output language. "
+            "Please translate again."
+        )
 
-            data = transcribe(uploaded_file)
-
-        if not data.strip():
-
-            st.warning("Please enter or provide some text.")
-
-        else:
-
-            try:
-
-                translated_text = translate_text(
-                    data,
-                    option
-                )
-
-                st.session_state[
-                    "translated_text"
-                ] = translated_text
-
-            except Exception:
-
-                st.error(
-                    "❌ Translation failed. "
-                    "Please try again later."
-                )
-
-    # Convert translated text to speech
-    if translated_text.strip():
+    else:
 
         try:
 
             audio_file = text_to_speech(
                 translated_text,
-                languages[option]
+                target_language
             )
 
             c2.audio(

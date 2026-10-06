@@ -1,12 +1,16 @@
 import streamlit as st
-from gtts import gTTS
 import whisper
 import tempfile
 import os
 import torch
 
+from gtts import gTTS
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
+
+# =========================================================
+# PAGE SETTINGS
+# =========================================================
 
 st.set_page_config(
     page_title="Simply! Translate",
@@ -23,7 +27,9 @@ st.markdown(
 )
 
 st.markdown(
-    "<h6 style='text-align: center; color: grey;'>By KC</h6>",
+    "<h6 style='text-align: center; color: grey;'>"
+    "By KC"
+    "</h6>",
     unsafe_allow_html=True
 )
 
@@ -36,7 +42,6 @@ st.markdown("""
     padding: 10px;
     border-radius: 10px;
 }
-
 .stTextArea textarea {
     font-size: 16px;
 }
@@ -45,11 +50,111 @@ st.markdown("""
 
 
 # =========================================================
+# NLLB-200
+# Supports around 200 languages
+# =========================================================
+
+NLLB_MODEL = "facebook/nllb-200-distilled-600M"
+
+
+# =========================================================
+# LANGUAGES
+# =========================================================
+
+LANGUAGES = {
+    "English": "eng_Latn",
+    "Hindi": "hin_Deva",
+    "Bengali": "ben_Beng",
+    "Gujarati": "guj_Gujr",
+    "Marathi": "mar_Deva",
+    "Tamil": "tam_Taml",
+    "Telugu": "tel_Telu",
+    "Kannada": "kan_Knda",
+    "Malayalam": "mal_Mlym",
+    "Punjabi": "pan_Guru",
+    "Urdu": "urd_Arab",
+    "Assamese": "asm_Beng",
+    "Nepali": "npi_Deva",
+    "Sanskrit": "san_Deva",
+    "French": "fra_Latn",
+    "German": "deu_Latn",
+    "Spanish": "spa_Latn",
+    "Italian": "ita_Latn",
+    "Portuguese": "por_Latn",
+    "Russian": "rus_Cyrl",
+    "Ukrainian": "ukr_Cyrl",
+    "Polish": "pol_Latn",
+    "Dutch": "nld_Latn",
+    "Swedish": "swe_Latn",
+    "Danish": "dan_Latn",
+    "Norwegian": "nob_Latn",
+    "Finnish": "fin_Latn",
+    "Greek": "ell_Grek",
+    "Czech": "ces_Latn",
+    "Slovak": "slk_Latn",
+    "Hungarian": "hun_Latn",
+    "Romanian": "ron_Latn",
+    "Bulgarian": "bul_Cyrl",
+    "Croatian": "hrv_Latn",
+    "Serbian": "srp_Cyrl",
+    "Slovenian": "slv_Latn",
+    "Bosnian": "bos_Latn",
+    "Turkish": "tur_Latn",
+    "Arabic": "arb_Arab",
+    "Hebrew": "heb_Hebr",
+    "Persian": "pes_Arab",
+    "Japanese": "jpn_Jpan",
+    "Korean": "kor_Hang",
+    "Chinese Simplified": "zho_Hans",
+    "Chinese Traditional": "zho_Hant",
+    "Vietnamese": "vie_Latn",
+    "Thai": "tha_Thai",
+    "Indonesian": "ind_Latn",
+    "Malay": "zsm_Latn",
+    "Filipino": "tgl_Latn",
+    "Swahili": "swh_Latn",
+    "Afrikaans": "afr_Latn",
+    "Amharic": "amh_Ethi",
+    "Welsh": "cym_Latn",
+    "Irish": "gle_Latn",
+    "Catalan": "cat_Latn",
+    "Galician": "glg_Latn",
+    "Basque": "eus_Latn",
+    "Icelandic": "isl_Latn",
+    "Estonian": "est_Latn",
+    "Latvian": "lvs_Latn",
+    "Lithuanian": "lit_Latn",
+    "Albanian": "als_Latn",
+    "Armenian": "hye_Armn",
+    "Azerbaijani": "azj_Latn",
+    "Georgian": "kat_Geor",
+    "Kazakh": "kaz_Cyrl",
+    "Uzbek": "uzn_Latn",
+    "Tajik": "tgk_Cyrl",
+    "Kyrgyz": "kir_Cyrl",
+    "Turkmen": "tuk_Latn",
+    "Mongolian": "khk_Cyrl",
+    "Burmese": "mya_Mymr",
+    "Khmer": "khm_Khmr",
+    "Lao": "lao_Laoo",
+    "Sinhala": "sin_Sinh",
+    "Pashto": "pbt_Arab",
+    "Somali": "som_Latn",
+    "Yoruba": "yor_Latn",
+    "Zulu": "zul_Latn",
+    "Xhosa": "xho_Latn",
+    "Haitian Creole": "hat_Latn",
+    "Esperanto": "epo_Latn"
+}
+
+
+# =========================================================
 # LOAD WHISPER
 # =========================================================
 
 @st.cache_resource
 def load_whisper():
+
     return whisper.load_model("base")
 
 
@@ -57,43 +162,38 @@ model = load_whisper()
 
 
 # =========================================================
-# TRANSLATION MODELS
+# LOAD NLLB
 # =========================================================
 
-TRANSLATION_MODELS = {
-    "English → Hindi": {
-        "model": "Helsinki-NLP/opus-mt-en-hi",
-        "source": "en",
-        "target": "hi"
-    },
-
-    "Hindi → English": {
-        "model": "Helsinki-NLP/opus-mt-hi-en",
-        "source": "hi",
-        "target": "en"
-    }
-}
-
-
 @st.cache_resource
-def load_translation_model(model_name):
+def load_translation_model():
 
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name
+        NLLB_MODEL
     )
 
     translation_model = AutoModelForSeq2SeqLM.from_pretrained(
-        model_name
+        NLLB_MODEL
     )
+
+    translation_model.eval()
 
     return tokenizer, translation_model
 
 
-def translate_text(text, model_name):
+# =========================================================
+# TRANSLATE
+# =========================================================
 
-    tokenizer, translation_model = load_translation_model(
-        model_name
-    )
+def translate_text(
+    text,
+    source_language,
+    target_language
+):
+
+    tokenizer, translation_model = load_translation_model()
+
+    tokenizer.src_lang = source_language
 
     inputs = tokenizer(
         text,
@@ -105,24 +205,30 @@ def translate_text(text, model_name):
 
     with torch.no_grad():
 
-        translated = translation_model.generate(
+        translated_tokens = translation_model.generate(
             **inputs,
+            forced_bos_token_id=tokenizer.convert_tokens_to_ids(
+                target_language
+            ),
             max_length=512
         )
 
-    result = tokenizer.decode(
-        translated[0],
+    result = tokenizer.batch_decode(
+        translated_tokens,
         skip_special_tokens=True
     )
 
-    return result
+    return result[0]
 
 
 # =========================================================
 # TEXT TO SPEECH
 # =========================================================
 
-def text_to_speech(text, language):
+def text_to_speech(
+    text,
+    language
+):
 
     output_file = tempfile.NamedTemporaryFile(
         delete=False,
@@ -140,7 +246,94 @@ def text_to_speech(text, language):
 
 
 # =========================================================
-# TRANSCRIBE AUDIO
+# TTS LANGUAGE CODES
+# =========================================================
+
+TTS_CODES = {
+    "English": "en",
+    "Hindi": "hi",
+    "Bengali": "bn",
+    "Gujarati": "gu",
+    "Marathi": "mr",
+    "Tamil": "ta",
+    "Telugu": "te",
+    "Kannada": "kn",
+    "Malayalam": "ml",
+    "Punjabi": "pa",
+    "Urdu": "ur",
+    "French": "fr",
+    "German": "de",
+    "Spanish": "es",
+    "Italian": "it",
+    "Portuguese": "pt",
+    "Russian": "ru",
+    "Ukrainian": "uk",
+    "Polish": "pl",
+    "Dutch": "nl",
+    "Swedish": "sv",
+    "Danish": "da",
+    "Norwegian": "no",
+    "Finnish": "fi",
+    "Greek": "el",
+    "Czech": "cs",
+    "Slovak": "sk",
+    "Hungarian": "hu",
+    "Romanian": "ro",
+    "Bulgarian": "bg",
+    "Croatian": "hr",
+    "Serbian": "sr",
+    "Slovenian": "sl",
+    "Turkish": "tr",
+    "Arabic": "ar",
+    "Hebrew": "he",
+    "Persian": "fa",
+    "Japanese": "ja",
+    "Korean": "ko",
+    "Chinese Simplified": "zh-CN",
+    "Chinese Traditional": "zh-TW",
+    "Vietnamese": "vi",
+    "Thai": "th",
+    "Indonesian": "id",
+    "Malay": "ms",
+    "Filipino": "tl",
+    "Swahili": "sw",
+    "Afrikaans": "af",
+    "Amharic": "am",
+    "Welsh": "cy",
+    "Irish": "ga",
+    "Catalan": "ca",
+    "Galician": "gl",
+    "Basque": "eu",
+    "Icelandic": "is",
+    "Estonian": "et",
+    "Latvian": "lv",
+    "Lithuanian": "lt",
+    "Albanian": "sq",
+    "Armenian": "hy",
+    "Azerbaijani": "az",
+    "Georgian": "ka",
+    "Kazakh": "kk",
+    "Uzbek": "uz",
+    "Tajik": "tg",
+    "Kyrgyz": "ky",
+    "Turkmen": "tk",
+    "Mongolian": "mn",
+    "Burmese": "my",
+    "Khmer": "km",
+    "Lao": "lo",
+    "Sinhala": "si",
+    "Pashto": "ps",
+    "Somali": "so",
+    "Yoruba": "yo",
+    "Zulu": "zu",
+    "Xhosa": "xh",
+    "Haitian Creole": "ht",
+    "Esperanto": "eo"
+}
+
+
+# =========================================================
+# AUDIO TRANSCRIPTION
 # =========================================================
 
 def transcribe(audio_file):
@@ -158,7 +351,7 @@ def transcribe(audio_file):
     try:
 
         st.info(
-            "🔄 Transcribing... Please wait!"
+            "🔄 Transcribing audio..."
         )
 
         result = model.transcribe(
@@ -166,7 +359,7 @@ def transcribe(audio_file):
         )
 
         st.success(
-            "✅ Transcription Complete!"
+            "✅ Transcription Complete"
         )
 
         return result["text"].strip()
@@ -182,6 +375,7 @@ def transcribe(audio_file):
     finally:
 
         if os.path.exists(file_path):
+
             os.remove(file_path)
 
 
@@ -193,7 +387,7 @@ c1, c3, c2 = st.columns(3)
 
 
 # =========================================================
-# INPUT FORMAT
+# INPUT
 # =========================================================
 
 inp = c1.selectbox(
@@ -209,24 +403,25 @@ data = ""
 
 
 # =========================================================
-# TEXT INPUT
+# TEXT
 # =========================================================
 
 if inp == "Text":
 
     data = c1.text_area(
-        "Enter Text Here"
+        "Enter Text Here",
+        height=180
     )
 
 
 # =========================================================
-# MICROPHONE INPUT
+# MICROPHONE
 # =========================================================
 
 elif inp == "MIC":
 
     recorded_file = c1.audio_input(
-        "Record Audio"
+        "🎤 Record Audio"
     )
 
     if recorded_file:
@@ -245,18 +440,19 @@ elif inp == "MIC":
 
             c1.text_area(
                 "Transcribed Text",
-                data
+                data,
+                height=180
             )
 
 
 # =========================================================
-# AUDIO FILE INPUT
+# AUDIO FILE
 # =========================================================
 
 else:
 
     uploaded_file = c1.file_uploader(
-        "Upload Audio File",
+        "📁 Upload Audio File",
         type=[
             "wav",
             "mp3",
@@ -282,30 +478,41 @@ else:
 
             c1.text_area(
                 "Transcribed Text",
-                data
+                data,
+                height=180
             )
 
 
 # =========================================================
-# LANGUAGE
+# SOURCE LANGUAGE
 # =========================================================
 
-translation_option = c1.selectbox(
-    "Translation Direction",
-    list(TRANSLATION_MODELS.keys())
+source_language_name = c1.selectbox(
+    "Source Language",
+    list(LANGUAGES.keys())
 )
 
-translation_settings = TRANSLATION_MODELS[
-    translation_option
+source_language = LANGUAGES[
+    source_language_name
 ]
-
-model_name = translation_settings["model"]
-
-target_language = translation_settings["target"]
 
 
 # =========================================================
-# TRANSLATE
+# TARGET LANGUAGE
+# =========================================================
+
+target_language_name = c1.selectbox(
+    "Output Language",
+    list(LANGUAGES.keys())
+)
+
+target_language = LANGUAGES[
+    target_language_name
+]
+
+
+# =========================================================
+# TRANSLATE BUTTON
 # =========================================================
 
 if c2.button(
@@ -323,10 +530,31 @@ if c2.button(
             ""
         ).strip()
 
+
     if not source_text:
 
         st.warning(
             "⚠️ Please enter text or transcribe audio first."
+        )
+
+    elif source_language == target_language:
+
+        st.session_state[
+            "translated_text"
+        ] = source_text
+
+        st.session_state[
+            "translated_language"
+        ] = target_language_name
+
+        c2.text_area(
+            "Translated Text",
+            source_text,
+            height=180
+        )
+
+        st.success(
+            "✅ Source and output languages are the same."
         )
 
     else:
@@ -339,7 +567,8 @@ if c2.button(
 
                 translated_text = translate_text(
                     source_text,
-                    model_name
+                    source_language,
+                    target_language
                 )
 
             st.session_state[
@@ -348,11 +577,12 @@ if c2.button(
 
             st.session_state[
                 "translated_language"
-            ] = target_language
+            ] = target_language_name
 
             c2.text_area(
                 "Translated Text",
-                translated_text
+                translated_text,
+                height=180
             )
 
             st.success(
@@ -367,7 +597,7 @@ if c2.button(
 
 
 # =========================================================
-# CONVERT TO SPEECH
+# TEXT TO SPEECH
 # =========================================================
 
 if c2.button(
@@ -384,16 +614,23 @@ if c2.button(
         ""
     )
 
+
     if not translated_text:
 
         st.warning(
             "⚠️ Please translate the text first."
         )
 
-    elif saved_language != target_language:
+    elif saved_language != target_language_name:
 
         st.warning(
-            "⚠️ Please translate again before converting to speech."
+            "⚠️ Please translate again after changing the output language."
+        )
+
+    elif target_language_name not in TTS_CODES:
+
+        st.warning(
+            "⚠️ Speech is not available for this language through gTTS."
         )
 
     else:
@@ -406,7 +643,7 @@ if c2.button(
 
                 audio_file = text_to_speech(
                     translated_text,
-                    target_language
+                    TTS_CODES[target_language_name]
                 )
 
             c2.audio(

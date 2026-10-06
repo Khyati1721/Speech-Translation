@@ -1,9 +1,12 @@
 import streamlit as st
-from deep_translator import GoogleTranslator as gt
 from gtts import gTTS
 import whisper
 import tempfile
 import os
+import torch
+
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+
 
 st.set_page_config(
     page_title="Simply! Translate",
@@ -41,32 +44,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# Languages
-LANGUAGES = {
-    "English": "en",
-    "Hindi": "hi",
-    "Bengali": "bn",
-    "Gujarati": "gu",
-    "Marathi": "mr",
-    "Tamil": "ta",
-    "Telugu": "te",
-    "Kannada": "kn",
-    "Malayalam": "ml",
-    "Punjabi": "pa",
-    "Urdu": "ur",
-    "French": "fr",
-    "German": "de",
-    "Spanish": "es",
-    "Italian": "it",
-    "Portuguese": "pt",
-    "Russian": "ru",
-    "Japanese": "ja",
-    "Korean": "ko",
-    "Chinese": "zh-CN"
-}
+# =========================================================
+# LOAD WHISPER
+# =========================================================
 
-
-# Load Whisper only once
 @st.cache_resource
 def load_whisper():
     return whisper.load_model("base")
@@ -75,17 +56,72 @@ def load_whisper():
 model = load_whisper()
 
 
-# Translate text
-@st.cache_data(ttl=3600)
-def translate_text(text, target):
-    translator = gt(
-        source="auto",
-        target=target
+# =========================================================
+# TRANSLATION MODELS
+# =========================================================
+
+TRANSLATION_MODELS = {
+    "English → Hindi": {
+        "model": "Helsinki-NLP/opus-mt-en-hi",
+        "source": "en",
+        "target": "hi"
+    },
+
+    "Hindi → English": {
+        "model": "Helsinki-NLP/opus-mt-hi-en",
+        "source": "hi",
+        "target": "en"
+    }
+}
+
+
+@st.cache_resource
+def load_translation_model(model_name):
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name
     )
-    return translator.translate(text)
+
+    translation_model = AutoModelForSeq2SeqLM.from_pretrained(
+        model_name
+    )
+
+    return tokenizer, translation_model
 
 
-# Text to speech
+def translate_text(text, model_name):
+
+    tokenizer, translation_model = load_translation_model(
+        model_name
+    )
+
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=512
+    )
+
+    with torch.no_grad():
+
+        translated = translation_model.generate(
+            **inputs,
+            max_length=512
+        )
+
+    result = tokenizer.decode(
+        translated[0],
+        skip_special_tokens=True
+    )
+
+    return result
+
+
+# =========================================================
+# TEXT TO SPEECH
+# =========================================================
+
 def text_to_speech(text, language):
 
     output_file = tempfile.NamedTemporaryFile(
@@ -103,7 +139,10 @@ def text_to_speech(text, language):
     return output_file
 
 
-# Transcribe audio
+# =========================================================
+# TRANSCRIBE AUDIO
+# =========================================================
+
 def transcribe(audio_file):
 
     extension = audio_file.name.split(".")[-1]
@@ -118,17 +157,25 @@ def transcribe(audio_file):
 
     try:
 
-        st.write("🔄 Transcribing... Please wait!")
+        st.info(
+            "🔄 Transcribing... Please wait!"
+        )
 
-        result = model.transcribe(file_path)
+        result = model.transcribe(
+            file_path
+        )
 
-        st.success("✅ Transcription Complete!")
+        st.success(
+            "✅ Transcription Complete!"
+        )
 
         return result["text"].strip()
 
     except Exception as e:
 
-        st.error(f"❌ Transcription Error: {e}")
+        st.error(
+            f"❌ Transcription Error: {e}"
+        )
 
         return ""
 
@@ -138,20 +185,33 @@ def transcribe(audio_file):
             os.remove(file_path)
 
 
-# Create columns
+# =========================================================
+# COLUMNS
+# =========================================================
+
 c1, c3, c2 = st.columns(3)
 
 
-# Input format
+# =========================================================
+# INPUT FORMAT
+# =========================================================
+
 inp = c1.selectbox(
     "Choose Input Format",
-    ("Text", "MIC", "Audio File")
+    (
+        "Text",
+        "MIC",
+        "Audio File"
+    )
 )
 
 data = ""
 
 
-# Text input
+# =========================================================
+# TEXT INPUT
+# =========================================================
+
 if inp == "Text":
 
     data = c1.text_area(
@@ -159,7 +219,10 @@ if inp == "Text":
     )
 
 
-# Microphone input
+# =========================================================
+# MICROPHONE INPUT
+# =========================================================
+
 elif inp == "MIC":
 
     recorded_file = c1.audio_input(
@@ -168,13 +231,17 @@ elif inp == "MIC":
 
     if recorded_file:
 
-        if c2.button("🎤 Transcribe"):
+        if c2.button(
+            "🎤 Transcribe"
+        ):
 
             data = transcribe(
                 recorded_file
             )
 
-            st.session_state["source_text"] = data
+            st.session_state[
+                "source_text"
+            ] = data
 
             c1.text_area(
                 "Transcribed Text",
@@ -182,7 +249,10 @@ elif inp == "MIC":
             )
 
 
-# Audio file input
+# =========================================================
+# AUDIO FILE INPUT
+# =========================================================
+
 else:
 
     uploaded_file = c1.file_uploader(
@@ -198,13 +268,17 @@ else:
 
     if uploaded_file:
 
-        if c2.button("🎤 Transcribe"):
+        if c2.button(
+            "🎤 Transcribe"
+        ):
 
             data = transcribe(
                 uploaded_file
             )
 
-            st.session_state["source_text"] = data
+            st.session_state[
+                "source_text"
+            ] = data
 
             c1.text_area(
                 "Transcribed Text",
@@ -212,17 +286,31 @@ else:
             )
 
 
-# Output language
-option = c1.selectbox(
-    "Output Language",
-    list(LANGUAGES.keys())
+# =========================================================
+# LANGUAGE
+# =========================================================
+
+translation_option = c1.selectbox(
+    "Translation Direction",
+    list(TRANSLATION_MODELS.keys())
 )
 
-target_language = LANGUAGES[option]
+translation_settings = TRANSLATION_MODELS[
+    translation_option
+]
+
+model_name = translation_settings["model"]
+
+target_language = translation_settings["target"]
 
 
-# Translate button
-if c2.button("🌐 Translate Text"):
+# =========================================================
+# TRANSLATE
+# =========================================================
+
+if c2.button(
+    "🌐 Translate Text"
+):
 
     if inp == "Text":
 
@@ -245,14 +333,22 @@ if c2.button("🌐 Translate Text"):
 
         try:
 
-            translated_text = translate_text(
-                source_text,
-                target_language
-            )
+            with st.spinner(
+                "🌐 Translating locally..."
+            ):
 
-            st.session_state["translated_text"] = translated_text
+                translated_text = translate_text(
+                    source_text,
+                    model_name
+                )
 
-            st.session_state["translated_language"] = option
+            st.session_state[
+                "translated_text"
+            ] = translated_text
+
+            st.session_state[
+                "translated_language"
+            ] = target_language
 
             c2.text_area(
                 "Translated Text",
@@ -260,22 +356,23 @@ if c2.button("🌐 Translate Text"):
             )
 
             st.success(
-                "✅ Successfully Translated"
+                "✅ Translation Complete"
             )
 
-        except Exception:
+        except Exception as e:
 
             st.error(
-                "❌ Google Translate is currently rate-limiting this app."
-            )
-
-            st.info(
-                "Please wait a little while and try again."
+                f"❌ Translation Error: {e}"
             )
 
 
-# Convert translated text to speech
-if c2.button("🔊 Convert To Speech"):
+# =========================================================
+# CONVERT TO SPEECH
+# =========================================================
+
+if c2.button(
+    "🔊 Convert To Speech"
+):
 
     translated_text = st.session_state.get(
         "translated_text",
@@ -293,25 +390,32 @@ if c2.button("🔊 Convert To Speech"):
             "⚠️ Please translate the text first."
         )
 
-    elif saved_language != option:
+    elif saved_language != target_language:
 
         st.warning(
-            "⚠️ You changed the output language. "
-            "Please translate again."
+            "⚠️ Please translate again before converting to speech."
         )
 
     else:
 
         try:
 
-            audio_file = text_to_speech(
-                translated_text,
-                target_language
-            )
+            with st.spinner(
+                "🔊 Creating speech..."
+            ):
+
+                audio_file = text_to_speech(
+                    translated_text,
+                    target_language
+                )
 
             c2.audio(
                 audio_file,
                 format="audio/mp3"
+            )
+
+            st.success(
+                "✅ Speech Created"
             )
 
         except Exception as e:
